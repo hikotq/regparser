@@ -57,6 +57,7 @@ impl Lexer {
 enum TokenType {
     OpUnion,
     OpStar,
+    OpConcat,
     OpNegation,
     Literal,
     Lparen,
@@ -97,7 +98,7 @@ impl Node {
         Box::new(Node {
             token: Token {
                 value: None,
-                kind: TokenType::OpUnion,
+                kind: TokenType::OpConcat,
             },
             lhs: Some(operand1),
             rhs: Some(operand2),
