@@ -1,5 +1,23 @@
 use std::cell::RefCell;
 use std::option::Option::{Some, None};
+use std::borrow::Borrow;
+
+#[derive(PartialEq, Eq, Debug)]
+enum TokenType {
+    OpUnion,
+    OpStar,
+    OpConcat,
+    OpNegation,
+    Literal,
+    Lparen,
+    Rparen,
+    EOF,
+}
+
+struct Token {
+    value: Option<String>,
+    kind: TokenType,
+}
 
 struct Lexer {
     string_list: RefCell<Vec<String>>,
@@ -51,18 +69,6 @@ impl Lexer {
             },
         }
     }
-}
-
-#[derive(PartialEq, Eq, Debug)]
-enum TokenType {
-    OpUnion,
-    OpStar,
-    OpConcat,
-    OpNegation,
-    Literal,
-    Lparen,
-    Rparen,
-    EOF,
 }
 
 struct Node {
@@ -140,11 +146,6 @@ impl Node {
             node.print(depth + 1);
         }
     }
-}
-
-struct Token {
-    value: Option<String>,
-    kind: TokenType,
 }
 
 struct Parser {
@@ -264,6 +265,64 @@ impl Parser {
     }
 }
 
+struct Converter;
+
+impl Converter {
+    fn fullmatch_to_submatch(regex: &str) -> String {
+        let lexer = Lexer::new(regex);
+        let parser = Parser::new(lexer);
+        let syntax_tree = parser.expr();
+        let regex: String = Converter::fullmatch_to_submatch_recursion(&syntax_tree);
+        regex
+    }
+
+    fn fullmatch_to_submatch_recursion(syntax_tree: &Box<Node>) -> String {
+        let lhs: Option<&Box<Node>> = if let Some(ref node) = syntax_tree.lhs {
+            Some(node)
+        } else {
+            None
+        };
+        let rhs: Option<&Box<Node>> = if let Some(ref node) = syntax_tree.rhs {
+            Some(node)
+        } else {
+            None
+        };
+        match syntax_tree.token.kind {
+            TokenType::OpNegation => {
+                let op_negation = "!";
+                let lparen = "(";
+                let regex = Converter::fullmatch_to_submatch_recursion(lhs.unwrap());
+                let rparen = ")";
+                let regex: String = op_negation.to_string() + lparen + &regex + rparen;
+                regex.to_string()
+            }
+            TokenType::OpUnion => {
+                let regex1 = Converter::fullmatch_to_submatch_recursion(lhs.unwrap());
+                let op_union = "|";
+                let regex2 = Converter::fullmatch_to_submatch_recursion(rhs.unwrap());
+                let regex = regex1 + op_union + &regex2;
+                regex.to_string()
+            }
+            TokenType::OpConcat => {
+                let regex1 = Converter::fullmatch_to_submatch_recursion(lhs.unwrap());
+                let regex2 = Converter::fullmatch_to_submatch_recursion(rhs.unwrap());
+                let regex = regex1 + &regex2;
+                regex.to_string()
+            }
+            TokenType::OpStar => {
+                let regex = Converter::fullmatch_to_submatch_recursion(lhs.unwrap());
+                let op_star = "*";
+                let regex = regex + op_star;
+                regex.to_string()
+            }
+            _ => {
+                let regex = syntax_tree.token.value.as_ref().unwrap().clone();
+                regex
+            }
+        }
+    }
+}
+
 #[test]
 fn regex_parse_star() {
     let regex = "001*";
@@ -282,8 +341,15 @@ fn regex_parse_union() {
 
 #[test]
 fn regex_parse_negation() {
-    let regex = "(!(001.*|.*01)221)";
+    let regex = "!(!(001.*|.*01)221)";
     let lexer = Lexer::new(regex);
     let parser = Parser::new(lexer);
     let syntax_tree: Box<Node> = parser.expr();
+}
+
+#[test]
+fn regex_parse_and_restruct() {
+    let regex = "!(!(001.*|.*01)221)";
+    let out_regex: &str = &Converter::fullmatch_to_submatch(regex);
+    assert!(regex == out_regex);
 }
