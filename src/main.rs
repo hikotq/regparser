@@ -396,29 +396,10 @@ impl Parser {
     }
 }
 
-#[test]
-fn regex_parse_star() {
-    let regex = "001*";
-    let lexer = Lexer::new(regex);
-    let parser = Parser::new(lexer);
-    let syntax_tree: Box<Node> = parser.expr();
-    assert!(regex == syntax_tree.restruct_regex());
-}
-
-#[test]
-fn regex_parse_union() {
-    let regex = "(1|01)001";
-    let lexer = Lexer::new(regex);
-    let parser = Parser::new(lexer);
-    let syntax_tree: Box<Node> = parser.expr();
-    assert!(regex == syntax_tree.restruct_regex());
-}
-
-#[test]
-fn regex_parse_negation() {
+fn main() {
     let regex = "!(!(001.*|.*01)221)";
     let lexer = Lexer::new(regex);
     let parser = Parser::new(lexer);
     let syntax_tree: Box<Node> = parser.expr();
-    assert!(regex == syntax_tree.restruct_regex());
+    println!("{}", syntax_tree.restruct_regex());
 }
