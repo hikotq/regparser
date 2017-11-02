@@ -71,66 +71,145 @@ impl Lexer {
     }
 }
 
+use std::marker::PhantomData;
+struct Empty;
+struct Filled;
+
+struct NodeBuilder<_Token> {
+    token: Option<Token>,
+    token_state: PhantomData<_Token>,
+    lhs: Option<Box<Node>>,
+    rhs: Option<Box<Node>>,
+    isPrefix: bool,
+    isSuffix: bool,
+}
+
+impl NodeBuilder<Empty> {
+    fn new() -> Self {
+        NodeBuilder {
+            token: None,
+            token_state: PhantomData,
+            lhs: None,
+            rhs: None,
+            isPrefix: false,
+            isSuffix: false,
+        }
+    }
+
+    fn token(self, token: Token) -> NodeBuilder<Filled> {
+        NodeBuilder {
+            token: Some(token),
+            token_state: PhantomData,
+            lhs: self.lhs,
+            rhs: self.rhs,
+            isPrefix: self.isPrefix,
+            isSuffix: self.isSuffix,
+        }
+    }
+}
+
+impl<_Token> NodeBuilder<_Token> {
+    fn lhs(mut self, lhs: Option<Box<Node>>) -> Self {
+        self.lhs = lhs;
+        self
+    }
+
+    fn rhs(mut self, rhs: Option<Box<Node>>) -> Self {
+        self.rhs = rhs;
+        self
+    }
+
+    fn isPrefix(mut self, isPrefix: bool) -> Self {
+        self.isPrefix = isPrefix;
+        self
+    }
+
+    fn isSuffix(mut self, isSuffix: bool) -> Self {
+        self.isSuffix = isSuffix;
+        self
+    }
+}
+
+impl NodeBuilder<Filled> {
+    fn build(self) -> Node {
+        Node {
+            token: self.token.unwrap(),
+            lhs: self.lhs,
+            rhs: self.rhs,
+            isPrefix: self.isPrefix,
+            isSuffix: self.isSuffix,
+        }
+    }
+}
+
 struct Node {
     token: Token,
     lhs: Option<Box<Node>>,
     rhs: Option<Box<Node>>,
+    isPrefix: bool,
+    isSuffix: bool,
 }
 
 impl Node {
     fn star(operand: Box<Node>) -> Box<Node> {
-        Box::new(Node {
-            token: Token {
-                value: None,
-                kind: TokenType::OpStar,
-            },
-            lhs: Some(operand),
-            rhs: None,
-        })
+        Box::new(
+            NodeBuilder::new()
+                .token(Token {
+                    value: None,
+                    kind: TokenType::OpStar,
+                })
+                .lhs(Some(operand))
+                .build(),
+        )
     }
 
     fn union(operand1: Box<Node>, operand2: Box<Node>) -> Box<Node> {
-        Box::new(Node {
-            token: Token {
-                value: None,
-                kind: TokenType::OpUnion,
-            },
-            lhs: Some(operand1),
-            rhs: Some(operand2),
-        })
+        Box::new(
+            NodeBuilder::new()
+                .token(Token {
+                    value: None,
+                    kind: TokenType::OpUnion,
+                })
+                .lhs(Some(operand1))
+                .rhs(Some(operand2))
+                .build(),
+        )
     }
 
     fn concat(operand1: Box<Node>, operand2: Box<Node>) -> Box<Node> {
-        Box::new(Node {
-            token: Token {
-                value: None,
-                kind: TokenType::OpConcat,
-            },
-            lhs: Some(operand1),
-            rhs: Some(operand2),
-        })
+        Box::new(
+            NodeBuilder::new()
+                .token(Token {
+                    value: None,
+                    kind: TokenType::OpConcat,
+                })
+                .lhs(Some(operand1))
+                .rhs(Some(operand2))
+                .build(),
+        )
     }
 
     fn negation(operand: Box<Node>) -> Box<Node> {
-        Box::new(Node {
-            token: Token {
-                value: None,
-                kind: TokenType::OpNegation,
-            },
-            lhs: Some(operand),
-            rhs: None,
-        })
+        Box::new(
+            NodeBuilder::new()
+                .token(Token {
+                    value: None,
+                    kind: TokenType::OpNegation,
+                })
+                .lhs(Some(operand))
+                .build(),
+        )
     }
 
     fn literal(ch: String) -> Box<Node> {
-        Box::new(Node {
-            token: Token {
-                value: Some(ch),
-                kind: TokenType::Literal,
-            },
-            lhs: None,
-            rhs: None,
-        })
+        Box::new(
+            NodeBuilder::new()
+                .token(Token {
+                    value: Some(ch),
+                    kind: TokenType::Literal,
+                })
+                .build(),
+        )
     }
 
     fn print(&self, depth: usize) {
