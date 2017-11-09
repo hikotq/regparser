@@ -1,6 +1,5 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::option::Option::{Some, None};
-use std::borrow::Borrow;
 
 #[derive(PartialEq, Eq, Debug)]
 enum TokenType {
@@ -9,22 +8,23 @@ enum TokenType {
     OpConcat,
     OpNegation,
     Literal,
+    Dot,
     Lparen,
     Rparen,
     EOF,
 }
 
-struct Token {
+pub struct Token {
     value: Option<String>,
     kind: TokenType,
 }
 
-struct Lexer {
+pub struct Lexer {
     string_list: RefCell<Vec<String>>,
 }
 
 impl Lexer {
-    fn new(regex: &str) -> Lexer {
+    pub fn new(regex: &str) -> Lexer {
         let regex = regex
             .chars()
             .map(|c| c.to_string())
@@ -33,7 +33,7 @@ impl Lexer {
         lexer
     }
 
-    fn scan(&self) -> Token {
+    pub fn scan(&self) -> Token {
         use self::TokenType::*;
         if self.string_list.borrow().is_empty() {
             return Token {
@@ -63,6 +63,10 @@ impl Lexer {
                 value: Some(ch),
                 kind: OpNegation,
             },
+            "." => Token {
+                value: Some(ch),
+                kind: Dot,
+            },
             _ => Token {
                 value: Some(ch),
                 kind: Literal,
@@ -75,9 +79,10 @@ use std::marker::PhantomData;
 struct Empty;
 struct Filled;
 
-struct NodeBuilder<_Token> {
-    token: Option<Token>,
-    token_state: PhantomData<_Token>,
+pub struct NodeBuilder<_NodeType> {
+    node_type: Option<NodeType>,
+    node_type_state: PhantomData<_NodeType>,
+    value: Option<String>,
     lhs: Option<Box<Node>>,
     rhs: Option<Box<Node>>,
     isPrefix: bool,
@@ -85,10 +90,11 @@ struct NodeBuilder<_Token> {
 }
 
 impl NodeBuilder<Empty> {
-    fn new() -> Self {
+    pub fn new() -> Self {
         NodeBuilder {
-            token: None,
-            token_state: PhantomData,
+            node_type: None,
+            node_type_state: PhantomData,
+            value: None,
             lhs: None,
             rhs: None,
             isPrefix: false,
@@ -96,10 +102,11 @@ impl NodeBuilder<Empty> {
         }
     }
 
-    fn token(self, token: Token) -> NodeBuilder<Filled> {
+    pub fn node_type(self, node_type: NodeType) -> NodeBuilder<Filled> {
         NodeBuilder {
-            token: Some(token),
-            token_state: PhantomData,
+            node_type: Some(node_type),
+            node_type_state: PhantomData,
+            value: self.value,
             lhs: self.lhs,
             rhs: self.rhs,
             isPrefix: self.isPrefix,
@@ -108,108 +115,70 @@ impl NodeBuilder<Empty> {
     }
 }
 
-impl<_Token> NodeBuilder<_Token> {
-    fn lhs(mut self, lhs: Option<Box<Node>>) -> Self {
+impl<_NodeType> NodeBuilder<_NodeType> {
+    pub fn value(mut self, value: Option<String>) -> Self {
+        self.value = value;
+        self
+    }
+
+    pub fn lhs(mut self, lhs: Option<Box<Node>>) -> Self {
         self.lhs = lhs;
         self
     }
 
-    fn rhs(mut self, rhs: Option<Box<Node>>) -> Self {
+    pub fn rhs(mut self, rhs: Option<Box<Node>>) -> Self {
         self.rhs = rhs;
         self
     }
 
-    fn isPrefix(mut self, isPrefix: bool) -> Self {
+    pub fn isPrefix(mut self, isPrefix: bool) -> Self {
         self.isPrefix = isPrefix;
         self
     }
 
-    fn isSuffix(mut self, isSuffix: bool) -> Self {
+    pub fn isSuffix(mut self, isSuffix: bool) -> Self {
         self.isSuffix = isSuffix;
         self
     }
 }
 
 impl NodeBuilder<Filled> {
-    fn build(self) -> Node {
+    pub fn build(self) -> Node {
         Node {
-            token: self.token.unwrap(),
+            node_type: self.node_type.unwrap(),
+            value: self.value,
             lhs: self.lhs,
             rhs: self.rhs,
-            isPrefix: self.isPrefix,
-            isSuffix: self.isSuffix,
+            isPrefix: Cell::new(self.isPrefix),
+            isSuffix: Cell::new(self.isSuffix),
         }
     }
 }
 
-struct Node {
-    token: Token,
+#[derive(PartialEq, Eq, Debug)]
+pub enum NodeType {
+    OpUnion,
+    OpNegation,
+    OpStar,
+    OpConcat,
+    Dot,
+    Literal,
+}
+
+pub struct Node {
+    node_type: NodeType,
+    value: Option<String>,
     lhs: Option<Box<Node>>,
     rhs: Option<Box<Node>>,
-    isPrefix: bool,
-    isSuffix: bool,
+    isPrefix: Cell<bool>,
+    isSuffix: Cell<bool>,
 }
 
 impl Node {
-    fn restruct_regex(&self) -> String {
-        let regex: String = Node::restruct_regex_recursion(self);
-        regex
-    }
-
-    fn restruct_regex_recursion(syntax_tree: &Node) -> String {
-        let lhs: Option<&Box<Node>> = if let Some(ref node) = syntax_tree.lhs {
-            Some(node)
-        } else {
-            None
-        };
-        let rhs: Option<&Box<Node>> = if let Some(ref node) = syntax_tree.rhs {
-            Some(node)
-        } else {
-            None
-        };
-        match syntax_tree.token.kind {
-            TokenType::OpNegation => {
-                let op_negation = "!";
-                let regex = Node::restruct_regex_recursion(lhs.unwrap());
-                let regex = if lhs.unwrap().token.kind == TokenType::OpUnion {
-                    op_negation.to_string() + &regex
-                } else {
-                    op_negation.to_string() + "(" + &regex + ")"
-                };
-                regex.to_string()
-            }
-            TokenType::OpUnion => {
-                let regex1 = Node::restruct_regex_recursion(lhs.unwrap());
-                let op_union = "|";
-                let regex2 = Node::restruct_regex_recursion(rhs.unwrap());
-                let regex = "(".to_string() + &regex1 + op_union + &regex2 + ")";
-                regex.to_string()
-            }
-            TokenType::OpConcat => {
-                let regex1 = Node::restruct_regex_recursion(lhs.unwrap());
-                let regex2 = Node::restruct_regex_recursion(rhs.unwrap());
-                let regex = regex1 + &regex2;
-                regex.to_string()
-            }
-            TokenType::OpStar => {
-                let regex = Node::restruct_regex_recursion(lhs.unwrap());
-                let op_star = "*";
-                let regex = regex + op_star;
-                regex.to_string()
-            }
-            _ => {
-                let regex = syntax_tree.token.value.as_ref().unwrap().clone();
-                regex
-            }
-        }
-    }
     fn star(operand: Box<Node>) -> Box<Node> {
         Box::new(
             NodeBuilder::new()
-                .token(Token {
-                    value: None,
-                    kind: TokenType::OpStar,
-                })
+                .node_type(NodeType::OpStar)
                 .lhs(Some(operand))
                 .build(),
         )
@@ -218,10 +187,7 @@ impl Node {
     fn union(operand1: Box<Node>, operand2: Box<Node>) -> Box<Node> {
         Box::new(
             NodeBuilder::new()
-                .token(Token {
-                    value: None,
-                    kind: TokenType::OpUnion,
-                })
+                .node_type(NodeType::OpUnion)
                 .lhs(Some(operand1))
                 .rhs(Some(operand2))
                 .build(),
@@ -231,10 +197,7 @@ impl Node {
     fn concat(operand1: Box<Node>, operand2: Box<Node>) -> Box<Node> {
         Box::new(
             NodeBuilder::new()
-                .token(Token {
-                    value: None,
-                    kind: TokenType::OpConcat,
-                })
+                .node_type(NodeType::OpConcat)
                 .lhs(Some(operand1))
                 .rhs(Some(operand2))
                 .build(),
@@ -244,37 +207,282 @@ impl Node {
     fn negation(operand: Box<Node>) -> Box<Node> {
         Box::new(
             NodeBuilder::new()
-                .token(Token {
-                    value: None,
-                    kind: TokenType::OpNegation,
-                })
+                .node_type(NodeType::OpNegation)
                 .lhs(Some(operand))
                 .build(),
         )
     }
 
+    fn dot() -> Box<Node> {
+        Box::new(NodeBuilder::new().node_type(NodeType::Dot).build())
+    }
+
     fn literal(ch: String) -> Box<Node> {
         Box::new(
             NodeBuilder::new()
-                .token(Token {
-                    value: Some(ch),
-                    kind: TokenType::Literal,
-                })
+                .node_type(NodeType::Literal)
+                .value(Some(ch))
                 .build(),
         )
     }
 
-    fn print(&self, depth: usize) {
+    pub fn make_regex(&self) -> String {
+        let regex: String = Node::make_regex_recursion(self);
+        regex
+    }
+
+    pub fn make_regex_recursion(syntax_tree: &Node) -> String {
+        let &Node { ref lhs, ref rhs, .. } = syntax_tree;
+        let lhs: Option<&Box<Node>> = lhs.as_ref();
+        let rhs: Option<&Box<Node>> = rhs.as_ref();
+        let regex = match syntax_tree.node_type {
+            NodeType::OpNegation => {
+                let op_negation = "!";
+                let regex = Node::make_regex_recursion(lhs.unwrap());
+                let regex = if lhs.unwrap().node_type == NodeType::OpUnion {
+                    op_negation.to_string() + &regex
+                } else {
+                    op_negation.to_string() + "(" + &regex + ")"
+                };
+                regex.to_string()
+            }
+            NodeType::OpUnion => {
+                let regex1 = Node::make_regex_recursion(lhs.unwrap());
+                let op_union = "|";
+                let regex2 = Node::make_regex_recursion(rhs.unwrap());
+                let regex = "(".to_string() + &regex1 + op_union + &regex2 + ")";
+                regex.to_string()
+            }
+            NodeType::OpConcat => {
+                let regex1 = Node::make_regex_recursion(lhs.unwrap());
+                let regex2 = Node::make_regex_recursion(rhs.unwrap());
+                let regex = regex1 + &regex2;
+                regex.to_string()
+            }
+            NodeType::OpStar => {
+                let regex = Node::make_regex_recursion(lhs.unwrap());
+                let op_star = "*";
+                let regex = regex + op_star;
+                regex.to_string()
+            }
+            NodeType::Dot => {
+                let regex = ".".to_string();
+                regex
+            }
+            _ => {
+                let regex = syntax_tree.value.as_ref().unwrap().clone();
+                regex
+            }
+        };
+        let regex = if syntax_tree.isPrefix.get() {
+            "^".to_string() + &regex
+        } else {
+            regex
+        };
+        let regex = if syntax_tree.isSuffix.get() {
+            regex + "$"
+        } else {
+            regex
+        };
+        regex
+    }
+
+
+    //fn submatch(&mut self) {
+    //    use self::NodeType::*;
+    //    let mut search_right = false;
+    //    {
+    //        //let &mut Node { ref lhs, ref rhs, .. } = self;
+    //        if self.node_type == Literal {
+    //            self.isPrefix.set(true);
+    //            return;
+    //        }
+    //        match (self.lhs.take(), self.rhs.take()) {
+    //            (lhs, None) =>
+    //        }
+    //        let mut inspection_node: Vec<&Box<Node>> = Vec::new();
+    //        inspection_node.push(lhs);
+    //        match &self.node_type {
+    //            &OpUnion => {
+    //                inspection_node.push(rhs);
+    //                search_right = true
+    //            }
+    //            &OpNegation => self.isPrefix.set(true),
+    //            _ => {}
+    //        }
+    //        for (i, ref node) in inspection_node.iter().enumerate() {
+    //            if &node.node_type == &OpStar {
+    //                let value = &node.value;
+    //                if let &Some(ref value) = value {
+    //                    if value == "." {
+    //                        match i {
+    //                            0 => {
+    //                                *lhs = None.as_ref();
+    //                            }
+    //                            1 => {
+    //                                *rhs = None.as_ref();
+    //                            }
+    //                            _ => {}
+    //                        }
+    //                    }
+    //                }
+    //            }
+    //        }
+    //    }
+    //    let &mut Node {
+    //        ref mut lhs,
+    //        ref mut rhs,
+    //        ..
+    //    } = self;
+    //    let lhs = lhs.as_mut();
+    //    lhs.unwrap().submatch();
+    //    if search_right {
+    //        let rhs = rhs.as_mut();
+    //        rhs.unwrap().submatch();
+    //    }
+    //}
+
+    pub fn print(&self, depth: usize) {
         for _ in 0..depth {
             print!(" ");
         }
-        print!("{:?}", self.token.kind);
+        print!("{:?}", self.node_type);
         println!("");
         if let Some(ref node) = self.lhs {
             node.print(depth + 1);
         }
         if let Some(ref node) = self.rhs {
             node.print(depth + 1);
+        }
+    }
+}
+
+type Link = Option<Box<Node>>;
+
+pub fn convert_prefix(link: &mut Link) {
+    use self::NodeType::*;
+    if let Some(mut node) = link.take() {
+        if node.node_type == OpUnion {
+            convert_prefix(&mut node.rhs);
+        } else if node.node_type == OpNegation || node.node_type == Literal {
+            {
+                if let Some(ref value) = node.value {
+                    if value != "" {
+                        node.isPrefix.set(true);
+                    }
+                } else {
+                    node.isPrefix.set(true);
+                }
+            }
+        }
+        if node.node_type == OpStar {
+            if let Some(ref lhs) = node.lhs {
+                let Node {
+                    ref node_type,
+                    ref value,
+                    ..
+                } = **lhs;
+                if node_type == &Dot {
+                    *link = Some(Box::new(
+                        NodeBuilder::new()
+                            .node_type(Literal)
+                            .value(Some("".to_string()))
+                            .build(),
+                    ));
+                    return;
+                }
+            }
+        }
+        convert_prefix(&mut node.lhs);
+        *link = Some(node);
+    } else {
+        return;
+    }
+}
+
+pub fn convert_suffix(link: &mut Link) {
+    use self::NodeType::*;
+    if let Some(mut node) = link.take() {
+        if node.node_type == OpUnion {
+            convert_suffix(&mut node.lhs);
+        } else if node.node_type == OpNegation || node.node_type == Literal {
+            if let Some(ref value) = node.value {
+                if value != "" {
+                    node.isSuffix.set(true);
+                }
+            } else {
+                node.isSuffix.set(true);
+            }
+        }
+        if node.node_type == OpStar {
+            if let Some(ref lhs) = node.lhs {
+                let Node {
+                    ref node_type,
+                    ref value,
+                    ..
+                } = **lhs;
+                if node_type == &Dot {
+                    *link = Some(Box::new(
+                        NodeBuilder::new()
+                            .node_type(Literal)
+                            .value(Some("".to_string()))
+                            .build(),
+                    ));
+                    return;
+                }
+            }
+        }
+        convert_suffix(&mut node.rhs);
+        *link = Some(node);
+
+    } else {
+        return;
+    }
+}
+
+pub fn convert_absent_pre_suf(link: &mut Link) {
+    use self::NodeType::*;
+    if let Some(mut node) = link.take() {
+        if node.node_type == OpNegation {
+            convert_prefix(&mut node.lhs);
+            convert_suffix(&mut node.lhs);
+        }
+        convert_absent_pre_suf(&mut node.lhs);
+        convert_absent_pre_suf(&mut node.rhs);
+        *link = Some(node);
+    } else {
+        return;
+    }
+}
+
+pub fn convert_fullmatch_to_submatch(link: &mut Link) {
+    convert_prefix(link);
+    convert_suffix(link);
+    convert_absent_pre_suf(link);
+}
+
+struct Tree {
+    root: Option<Box<Node>>,
+}
+
+impl Tree {
+    fn make_regex(&self) -> String {
+        if let Some(ref node) = self.root {
+            node.make_regex()
+        } else {
+            panic!("No tree has any nodes");
+        }
+    }
+
+    fn convert_fullmatch_to_submatch(&mut self) {
+        convert_fullmatch_to_submatch(&mut self.root);
+    }
+
+    fn print(&self) {
+        if let Some(ref node) = self.root {
+            node.print(0);
+        } else {
+            panic!("No tree has any nodes");
         }
     }
 }
@@ -320,6 +528,10 @@ impl Parser {
         } else if self.look.borrow().kind == TokenType::OpNegation {
             let node = self.negation();
             node
+        } else if self.look.borrow().kind == TokenType::Dot {
+            let node = Node::dot();
+            self.consume(TokenType::Dot);
+            node
         } else {
             let ch: String = self.look.borrow_mut().value.as_ref().unwrap().clone();
             let node = Node::literal(ch);
@@ -347,7 +559,9 @@ impl Parser {
     fn subseq(&self) -> Box<Node> {
         let node1 = self.star();
         if self.look.borrow().kind == TokenType::Lparen ||
-            self.look.borrow().kind == TokenType::Literal
+            self.look.borrow().kind == TokenType::OpNegation ||
+            self.look.borrow().kind == TokenType::Literal ||
+            self.look.borrow().kind == TokenType::Dot
         {
             //subseq -> star subseq
             let node2 = self.subseq();
@@ -362,7 +576,8 @@ impl Parser {
     fn seq(&self) -> Box<Node> {
         if self.look.borrow().kind == TokenType::Lparen ||
             self.look.borrow().kind == TokenType::OpNegation ||
-            self.look.borrow().kind == TokenType::Literal
+            self.look.borrow().kind == TokenType::Literal ||
+            self.look.borrow().kind == TokenType::Dot
         {
             self.subseq()
         } else {
@@ -394,6 +609,12 @@ impl Parser {
         self.consume(TokenType::EOF);
         node
     }
+
+    fn struct_syntax_tree(&self) -> Tree {
+        let node = self.expr();
+        let tree = Tree { root: Some(node) };
+        tree
+    }
 }
 
 #[test]
@@ -401,8 +622,8 @@ fn regex_parse_star() {
     let regex = "001*";
     let lexer = Lexer::new(regex);
     let parser = Parser::new(lexer);
-    let syntax_tree: Box<Node> = parser.expr();
-    assert!(regex == syntax_tree.restruct_regex());
+    let syntax_tree: Tree = parser.struct_syntax_tree();
+    assert!(regex == syntax_tree.make_regex());
 }
 
 #[test]
@@ -410,8 +631,8 @@ fn regex_parse_union() {
     let regex = "(1|01)001";
     let lexer = Lexer::new(regex);
     let parser = Parser::new(lexer);
-    let syntax_tree: Box<Node> = parser.expr();
-    assert!(regex == syntax_tree.restruct_regex());
+    let syntax_tree: Tree = parser.struct_syntax_tree();
+    assert!(regex == syntax_tree.make_regex());
 }
 
 #[test]
@@ -419,6 +640,16 @@ fn regex_parse_negation() {
     let regex = "!(!(001.*|.*01)221)";
     let lexer = Lexer::new(regex);
     let parser = Parser::new(lexer);
-    let syntax_tree: Box<Node> = parser.expr();
-    assert!(regex == syntax_tree.restruct_regex());
+    let syntax_tree: Tree = parser.struct_syntax_tree();
+    assert!(regex == syntax_tree.make_regex());
+}
+
+#[test]
+fn convert_fullmatch_to_submatch_test() {
+    let regex = "!(!(001.*|.*01)221)";
+    let lexer = Lexer::new(regex);
+    let parser = Parser::new(lexer);
+    let mut syntax_tree = parser.struct_syntax_tree();
+    syntax_tree.convert_fullmatch_to_submatch();
+    assert!("^!(^!(^001|01$)221$)$" == syntax_tree.make_regex());
 }
