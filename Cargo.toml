@@ -1,5 +1,5 @@
 [package]
-name = "regex"
+name = "regparser"
 version = "0.1.0"
 authors = ["pipopa <pipopa.710@gmail.com>"]
 
