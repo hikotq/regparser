@@ -287,61 +287,6 @@ impl Node {
         regex
     }
 
-
-    //fn submatch(&mut self) {
-    //    use self::NodeType::*;
-    //    let mut search_right = false;
-    //    {
-    //        //let &mut Node { ref lhs, ref rhs, .. } = self;
-    //        if self.node_type == Literal {
-    //            self.isPrefix.set(true);
-    //            return;
-    //        }
-    //        match (self.lhs.take(), self.rhs.take()) {
-    //            (lhs, None) =>
-    //        }
-    //        let mut inspection_node: Vec<&Box<Node>> = Vec::new();
-    //        inspection_node.push(lhs);
-    //        match &self.node_type {
-    //            &OpUnion => {
-    //                inspection_node.push(rhs);
-    //                search_right = true
-    //            }
-    //            &OpNegation => self.isPrefix.set(true),
-    //            _ => {}
-    //        }
-    //        for (i, ref node) in inspection_node.iter().enumerate() {
-    //            if &node.node_type == &OpStar {
-    //                let value = &node.value;
-    //                if let &Some(ref value) = value {
-    //                    if value == "." {
-    //                        match i {
-    //                            0 => {
-    //                                *lhs = None.as_ref();
-    //                            }
-    //                            1 => {
-    //                                *rhs = None.as_ref();
-    //                            }
-    //                            _ => {}
-    //                        }
-    //                    }
-    //                }
-    //            }
-    //        }
-    //    }
-    //    let &mut Node {
-    //        ref mut lhs,
-    //        ref mut rhs,
-    //        ..
-    //    } = self;
-    //    let lhs = lhs.as_mut();
-    //    lhs.unwrap().submatch();
-    //    if search_right {
-    //        let rhs = rhs.as_mut();
-    //        rhs.unwrap().submatch();
-    //    }
-    //}
-
     pub fn print(&self, depth: usize) {
         for _ in 0..depth {
             print!(" ");
@@ -461,12 +406,12 @@ pub fn convert_fullmatch_to_submatch(link: &mut Link) {
     convert_absent_pre_suf(link);
 }
 
-struct Tree {
+pub struct Tree {
     root: Option<Box<Node>>,
 }
 
 impl Tree {
-    fn make_regex(&self) -> String {
+    pub fn make_regex(&self) -> String {
         if let Some(ref node) = self.root {
             node.make_regex()
         } else {
@@ -474,11 +419,11 @@ impl Tree {
         }
     }
 
-    fn convert_fullmatch_to_submatch(&mut self) {
+    pub fn convert_fullmatch_to_submatch(&mut self) {
         convert_fullmatch_to_submatch(&mut self.root);
     }
 
-    fn print(&self) {
+    pub fn print(&self) {
         if let Some(ref node) = self.root {
             node.print(0);
         } else {
@@ -487,13 +432,13 @@ impl Tree {
     }
 }
 
-struct Parser {
+pub struct Parser {
     lexer: Lexer,
     look: RefCell<Token>,
 }
 
 impl Parser {
-    fn new(lexer: Lexer) -> Parser {
+    pub fn new(lexer: Lexer) -> Parser {
         use self::TokenType::*;
         let init_token = Token {
             value: None,
@@ -610,7 +555,7 @@ impl Parser {
         node
     }
 
-    fn struct_syntax_tree(&self) -> Tree {
+    pub fn struct_syntax_tree(&self) -> Tree {
         let node = self.expr();
         let tree = Tree { root: Some(node) };
         tree
