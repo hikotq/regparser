@@ -320,24 +320,24 @@ pub fn convert_prefix(link: &mut Link) {
                 }
             }
         }
-        if node.node_type == OpStar {
-            if let Some(ref lhs) = node.lhs {
-                let Node {
-                    ref node_type,
-                    ref value,
-                    ..
-                } = **lhs;
-                if node_type == &Dot {
-                    *link = Some(Box::new(
-                        NodeBuilder::new()
-                            .node_type(Literal)
-                            .value(Some("".to_string()))
-                            .build(),
-                    ));
-                    return;
-                }
-            }
-        }
+        //if node.node_type == OpStar {
+        //    if let Some(ref lhs) = node.lhs {
+        //        let Node {
+        //            ref node_type,
+        //            ref value,
+        //            ..
+        //        } = **lhs;
+        //        if node_type == &Dot {
+        //            *link = Some(Box::new(
+        //                NodeBuilder::new()
+        //                    .node_type(Literal)
+        //                    .value(Some("".to_string()))
+        //                    .build(),
+        //            ));
+        //            return;
+        //        }
+        //    }
+        //}
         convert_prefix(&mut node.lhs);
         *link = Some(node);
     } else {
@@ -359,24 +359,24 @@ pub fn convert_suffix(link: &mut Link) {
                 node.isSuffix.set(true);
             }
         }
-        if node.node_type == OpStar {
-            if let Some(ref lhs) = node.lhs {
-                let Node {
-                    ref node_type,
-                    ref value,
-                    ..
-                } = **lhs;
-                if node_type == &Dot {
-                    *link = Some(Box::new(
-                        NodeBuilder::new()
-                            .node_type(Literal)
-                            .value(Some("".to_string()))
-                            .build(),
-                    ));
-                    return;
-                }
-            }
-        }
+        //if node.node_type == OpStar {
+        //    if let Some(ref lhs) = node.lhs {
+        //        let Node {
+        //            ref node_type,
+        //            ref value,
+        //            ..
+        //        } = **lhs;
+        //        if node_type == &Dot {
+        //            *link = Some(Box::new(
+        //                NodeBuilder::new()
+        //                    .node_type(Literal)
+        //                    .value(Some("".to_string()))
+        //                    .build(),
+        //            ));
+        //            return;
+        //        }
+        //    }
+        //}
         convert_suffix(&mut node.rhs);
         *link = Some(node);
 
@@ -596,5 +596,6 @@ fn convert_fullmatch_to_submatch_test() {
     let parser = Parser::new(lexer);
     let mut syntax_tree = parser.struct_syntax_tree();
     syntax_tree.convert_fullmatch_to_submatch();
-    assert!("^!(^!(^001|01$)221$)$" == syntax_tree.make_regex());
+    println!("{}", syntax_tree.make_regex());
+    assert!("^!(^!(^001.*|.*01$)221$)$" == syntax_tree.make_regex());
 }
