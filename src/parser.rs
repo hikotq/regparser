@@ -302,110 +302,6 @@ impl Node {
     }
 }
 
-type Link = Option<Box<Node>>;
-
-pub fn convert_prefix(link: &mut Link) {
-    use self::NodeType::*;
-    if let Some(mut node) = link.take() {
-        if node.node_type == OpUnion {
-            convert_prefix(&mut node.rhs);
-        } else if node.node_type == OpNegation || node.node_type == Literal {
-            {
-                if let Some(ref value) = node.value {
-                    if value != "" {
-                        node.isPrefix.set(true);
-                    }
-                } else {
-                    node.isPrefix.set(true);
-                }
-            }
-        }
-        //if node.node_type == OpStar {
-        //    if let Some(ref lhs) = node.lhs {
-        //        let Node {
-        //            ref node_type,
-        //            ref value,
-        //            ..
-        //        } = **lhs;
-        //        if node_type == &Dot {
-        //            *link = Some(Box::new(
-        //                NodeBuilder::new()
-        //                    .node_type(Literal)
-        //                    .value(Some("".to_string()))
-        //                    .build(),
-        //            ));
-        //            return;
-        //        }
-        //    }
-        //}
-        convert_prefix(&mut node.lhs);
-        *link = Some(node);
-    } else {
-        return;
-    }
-}
-
-pub fn convert_suffix(link: &mut Link) {
-    use self::NodeType::*;
-    if let Some(mut node) = link.take() {
-        if node.node_type == OpUnion {
-            convert_suffix(&mut node.lhs);
-        } else if node.node_type == OpNegation || node.node_type == Literal {
-            if let Some(ref value) = node.value {
-                if value != "" {
-                    node.isSuffix.set(true);
-                }
-            } else {
-                node.isSuffix.set(true);
-            }
-        }
-        //if node.node_type == OpStar {
-        //    if let Some(ref lhs) = node.lhs {
-        //        let Node {
-        //            ref node_type,
-        //            ref value,
-        //            ..
-        //        } = **lhs;
-        //        if node_type == &Dot {
-        //            *link = Some(Box::new(
-        //                NodeBuilder::new()
-        //                    .node_type(Literal)
-        //                    .value(Some("".to_string()))
-        //                    .build(),
-        //            ));
-        //            return;
-        //        }
-        //    }
-        //}
-        convert_suffix(&mut node.rhs);
-        *link = Some(node);
-
-    } else {
-        return;
-    }
-}
-
-pub fn convert_absent_pre_suf(link: &mut Link) {
-    use self::NodeType::*;
-    if let Some(mut node) = link.take() {
-        if node.node_type == OpNegation {
-            convert_prefix(&mut node.lhs);
-            convert_suffix(&mut node.lhs);
-        }
-        convert_absent_pre_suf(&mut node.lhs);
-        convert_absent_pre_suf(&mut node.rhs);
-        *link = Some(node);
-    } else {
-        return;
-    }
-}
-
-pub fn convert_fullmatch_to_submatch(link: &mut Link) {
-    convert_prefix(link);
-    convert_suffix(link);
-    convert_absent_pre_suf(link);
-}
-
 pub struct Tree {
     root: Option<Box<Node>>,
 }
@@ -417,10 +313,6 @@ impl Tree {
         } else {
             panic!("No tree has any nodes");
         }
-    }
-
-    pub fn convert_fullmatch_to_submatch(&mut self) {
-        convert_fullmatch_to_submatch(&mut self.root);
     }
 
     pub fn print(&self) {
@@ -587,15 +479,4 @@ fn regex_parse_negation() {
     let parser = Parser::new(lexer);
     let syntax_tree: Tree = parser.struct_syntax_tree();
     assert!(regex == syntax_tree.make_regex());
-}
-
-#[test]
-fn convert_fullmatch_to_submatch_test() {
-    let regex = "!(!(001.*|.*01)221)";
-    let lexer = Lexer::new(regex);
-    let parser = Parser::new(lexer);
-    let mut syntax_tree = parser.struct_syntax_tree();
-    syntax_tree.convert_fullmatch_to_submatch();
-    println!("{}", syntax_tree.make_regex());
-    assert!("^!(^!(^001.*|.*01$)221$)$" == syntax_tree.make_regex());
 }
