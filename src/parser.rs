@@ -303,7 +303,7 @@ impl Node {
 }
 
 pub struct Tree {
-    root: Option<Box<Node>>,
+    pub root: Option<Box<Node>>,
 }
 
 impl Tree {
