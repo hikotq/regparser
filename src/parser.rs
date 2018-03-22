@@ -166,10 +166,10 @@ pub enum NodeType {
 }
 
 pub struct Node {
-    node_type: NodeType,
-    value: Option<String>,
-    lhs: Option<Box<Node>>,
-    rhs: Option<Box<Node>>,
+    pub node_type: NodeType,
+    pub value: Option<String>,
+    pub lhs: Option<Box<Node>>,
+    pub rhs: Option<Box<Node>>,
     isPrefix: Cell<bool>,
     isSuffix: Cell<bool>,
 }
