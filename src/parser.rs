@@ -457,9 +457,10 @@ impl Parser {
 
     fn group(&self) -> Box<Node> {
         //group -> subexpr 
-        let operand = self.subexpr();
         self.group_count.set(self.group_count.get() + 1);
-        let node =  Node::group(operand, self.group_count.get());
+        let group_id = self.group_count.get();
+        let operand = self.subexpr();
+        let node =  Node::group(operand, group_id);
         node
     }
 
