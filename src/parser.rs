@@ -85,6 +85,7 @@ pub struct NodeBuilder<_NodeType> {
     value: Option<String>,
     lhs: Option<Box<Node>>,
     rhs: Option<Box<Node>>,
+    group_id: Option<u32>, 
     isPrefix: bool,
     isSuffix: bool,
 }
@@ -97,6 +98,7 @@ impl NodeBuilder<Empty> {
             value: None,
             lhs: None,
             rhs: None,
+            group_id: None, 
             isPrefix: false,
             isSuffix: false,
         }
@@ -109,6 +111,7 @@ impl NodeBuilder<Empty> {
             value: self.value,
             lhs: self.lhs,
             rhs: self.rhs,
+            group_id: self.group_id, 
             isPrefix: self.isPrefix,
             isSuffix: self.isSuffix,
         }
@@ -131,6 +134,11 @@ impl<_NodeType> NodeBuilder<_NodeType> {
         self
     }
 
+    pub fn group_id(mut self, group_id: Option<u32>) -> Self {
+        self.group_id = group_id;
+        self
+    }
+
     pub fn isPrefix(mut self, isPrefix: bool) -> Self {
         self.isPrefix = isPrefix;
         self
@@ -149,6 +157,7 @@ impl NodeBuilder<Filled> {
             value: self.value,
             lhs: self.lhs,
             rhs: self.rhs,
+            group_id: self.group_id,
             isPrefix: Cell::new(self.isPrefix),
             isSuffix: Cell::new(self.isSuffix),
         }
@@ -157,6 +166,7 @@ impl NodeBuilder<Filled> {
 
 #[derive(PartialEq, Eq, Debug)]
 pub enum NodeType {
+    Group, 
     OpUnion,
     OpNegation,
     OpStar,
@@ -170,11 +180,22 @@ pub struct Node {
     pub value: Option<String>,
     pub lhs: Option<Box<Node>>,
     pub rhs: Option<Box<Node>>,
+    pub group_id: Option<u32>, 
     isPrefix: Cell<bool>,
     isSuffix: Cell<bool>,
 }
 
 impl Node {
+    fn group(operand: Box<Node>, id: u32) -> Box<Node> {
+        Box::new(
+            NodeBuilder::new()
+                .node_type(NodeType::Group)
+                .lhs(Some(operand))
+                .group_id(Some(id))
+                .build(),
+        )
+    }
+    
     fn star(operand: Box<Node>) -> Box<Node> {
         Box::new(
             NodeBuilder::new()
@@ -292,6 +313,9 @@ impl Node {
             print!(" ");
         }
         print!("{:?}", self.node_type);
+        if self.node_type == NodeType::Group {
+            print!(" {}", self.group_id.unwrap());
+        }
         println!("");
         if let Some(ref node) = self.lhs {
             node.print(depth + 1);
@@ -327,6 +351,7 @@ impl Tree {
 pub struct Parser {
     lexer: Lexer,
     look: RefCell<Token>,
+    group_count: Cell<u32>,
 }
 
 impl Parser {
@@ -339,6 +364,7 @@ impl Parser {
         let parser = Parser {
             lexer: lexer,
             look: RefCell::new(init_token),
+            group_count: Cell::new(0), 
         };
         parser.scan();
         parser
@@ -357,9 +383,9 @@ impl Parser {
 
     fn factor(&self) -> Box<Node> {
         if self.look.borrow().kind == TokenType::Lparen {
-            //factor -> '(' subexpr ')'
+            //factor -> '(' group ')'
             self.consume(TokenType::Lparen);
-            let node = self.subexpr();
+            let node = self.group();
             self.consume(TokenType::Rparen);
             node
         } else if self.look.borrow().kind == TokenType::OpNegation {
@@ -427,6 +453,14 @@ impl Parser {
         //    //seq -> ''
         //    _ => Node::literal("".to_string()),
         //}
+    }
+
+    fn group(&self) -> Box<Node> {
+        //group -> subexpr 
+        let operand = self.subexpr();
+        self.group_count.set(self.group_count.get() + 1);
+        let node =  Node::group(operand, self.group_count.get());
+        node
     }
 
     fn subexpr(&self) -> Box<Node> {
