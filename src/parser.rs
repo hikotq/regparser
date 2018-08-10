@@ -1,11 +1,11 @@
 use std::cell::{Cell, RefCell};
-use std::option::Option::{Some, None};
+use std::collections::VecDeque;
+use std::option::Option::{None, Some};
 
 #[derive(PartialEq, Eq, Debug)]
 enum TokenType {
     OpUnion,
     OpStar,
-    OpConcat,
     OpNegation,
     Literal,
     Dot,
@@ -15,12 +15,13 @@ enum TokenType {
 }
 
 pub struct Token {
-    value: Option<String>,
+    value: Option<u8>,
     kind: TokenType,
 }
 
 pub struct Lexer {
     string_list: RefCell<Vec<String>>,
+    token_queue: RefCell<VecDeque<Token>>,
 }
 
 impl Lexer {
@@ -29,7 +30,10 @@ impl Lexer {
             .chars()
             .map(|c| c.to_string())
             .collect::<Vec<String>>();
-        let lexer = Lexer { string_list: RefCell::new(regex) };
+        let lexer = Lexer {
+            string_list: RefCell::new(regex),
+            token_queue: RefCell::new(VecDeque::new()),
+        };
         lexer
     }
 
@@ -41,36 +45,43 @@ impl Lexer {
                 kind: EOF,
             };
         }
-        let ch = self.string_list.borrow_mut().remove(0);
-        match &*ch {
-            "|" => Token {
-                value: Some(ch),
-                kind: OpUnion,
-            },
-            "(" => Token {
-                value: Some(ch),
-                kind: Lparen,
-            },
-            ")" => Token {
-                value: Some(ch),
-                kind: Rparen,
-            },
-            "*" => Token {
-                value: Some(ch),
-                kind: OpStar,
-            },
-            "!" => Token {
-                value: Some(ch),
-                kind: OpNegation,
-            },
-            "." => Token {
-                value: Some(ch),
-                kind: Dot,
-            },
-            _ => Token {
-                value: Some(ch),
-                kind: Literal,
-            },
+        if !self.token_queue.borrow().is_empty() {
+            self.token_queue.borrow_mut().pop_front().unwrap()
+        } else {
+            let s = self.string_list.borrow_mut().remove(0);
+            match &*s {
+                "|" => self.token_queue.borrow_mut().push_back(Token {
+                    value: None,
+                    kind: OpUnion,
+                }),
+                "(" => self.token_queue.borrow_mut().push_back(Token {
+                    value: None,
+                    kind: Lparen,
+                }),
+                ")" => self.token_queue.borrow_mut().push_back(Token {
+                    value: None,
+                    kind: Rparen,
+                }),
+                "*" => self.token_queue.borrow_mut().push_back(Token {
+                    value: None,
+                    kind: OpStar,
+                }),
+                "!" => self.token_queue.borrow_mut().push_back(Token {
+                    value: None,
+                    kind: OpNegation,
+                }),
+                "." => self.token_queue.borrow_mut().push_back(Token {
+                    value: None,
+                    kind: Dot,
+                }),
+                _ => for b in s.as_bytes() {
+                    self.token_queue.borrow_mut().push_back(Token {
+                        value: Some(*b),
+                        kind: Literal,
+                    });
+                },
+            };
+            self.token_queue.borrow_mut().pop_front().unwrap()
         }
     }
 }
@@ -82,10 +93,10 @@ struct Filled;
 pub struct NodeBuilder<_NodeType> {
     node_type: Option<NodeType>,
     node_type_state: PhantomData<_NodeType>,
-    value: Option<String>,
+    value: Option<u8>,
     lhs: Option<Box<Node>>,
     rhs: Option<Box<Node>>,
-    group_id: Option<u32>, 
+    group_id: Option<u32>,
     isPrefix: bool,
     isSuffix: bool,
 }
@@ -98,7 +109,7 @@ impl NodeBuilder<Empty> {
             value: None,
             lhs: None,
             rhs: None,
-            group_id: None, 
+            group_id: None,
             isPrefix: false,
             isSuffix: false,
         }
@@ -111,7 +122,7 @@ impl NodeBuilder<Empty> {
             value: self.value,
             lhs: self.lhs,
             rhs: self.rhs,
-            group_id: self.group_id, 
+            group_id: self.group_id,
             isPrefix: self.isPrefix,
             isSuffix: self.isSuffix,
         }
@@ -119,7 +130,7 @@ impl NodeBuilder<Empty> {
 }
 
 impl<_NodeType> NodeBuilder<_NodeType> {
-    pub fn value(mut self, value: Option<String>) -> Self {
+    pub fn value(mut self, value: Option<u8>) -> Self {
         self.value = value;
         self
     }
@@ -166,7 +177,7 @@ impl NodeBuilder<Filled> {
 
 #[derive(PartialEq, Eq, Debug)]
 pub enum NodeType {
-    Group, 
+    Group,
     OpUnion,
     OpNegation,
     OpStar,
@@ -177,10 +188,10 @@ pub enum NodeType {
 
 pub struct Node {
     pub node_type: NodeType,
-    pub value: Option<String>,
+    pub value: Option<u8>,
     pub lhs: Option<Box<Node>>,
     pub rhs: Option<Box<Node>>,
-    pub group_id: Option<u32>, 
+    pub group_id: Option<u32>,
     isPrefix: Cell<bool>,
     isSuffix: Cell<bool>,
 }
@@ -195,7 +206,7 @@ impl Node {
                 .build(),
         )
     }
-    
+
     fn star(operand: Box<Node>) -> Box<Node> {
         Box::new(
             NodeBuilder::new()
@@ -238,11 +249,11 @@ impl Node {
         Box::new(NodeBuilder::new().node_type(NodeType::Dot).build())
     }
 
-    fn literal(ch: String) -> Box<Node> {
+    fn literal(ch: Option<u8>) -> Box<Node> {
         Box::new(
             NodeBuilder::new()
                 .node_type(NodeType::Literal)
-                .value(Some(ch))
+                .value(ch)
                 .build(),
         )
     }
@@ -253,10 +264,18 @@ impl Node {
     }
 
     pub fn make_regex_recursion(syntax_tree: &Node) -> String {
-        let &Node { ref lhs, ref rhs, .. } = syntax_tree;
+        println!("{:?}", syntax_tree.node_type);
+        let &Node {
+            ref lhs, ref rhs, ..
+        } = syntax_tree;
         let lhs: Option<&Box<Node>> = lhs.as_ref();
         let rhs: Option<&Box<Node>> = rhs.as_ref();
         let regex = match syntax_tree.node_type {
+            NodeType::Group => {
+                let regex = Node::make_regex_recursion(lhs.unwrap());
+                let regex = "(".to_string() + &regex + ")";
+                regex
+            }
             NodeType::OpNegation => {
                 let op_negation = "!";
                 let regex = Node::make_regex_recursion(lhs.unwrap());
@@ -291,8 +310,11 @@ impl Node {
                 regex
             }
             _ => {
-                let regex = syntax_tree.value.as_ref().unwrap().clone();
-                regex
+                if let Some(regex) = syntax_tree.value.as_ref() {
+                    (*regex as char).to_string()
+                } else {
+                    "".to_string()
+                }
             }
         };
         let regex = if syntax_tree.isPrefix.get() {
@@ -361,10 +383,10 @@ impl Parser {
             value: None,
             kind: EOF,
         };
-        let parser = Parser {
+        let mut parser = Parser {
             lexer: lexer,
             look: RefCell::new(init_token),
-            group_count: Cell::new(0), 
+            group_count: Cell::new(0),
         };
         parser.scan();
         parser
@@ -396,8 +418,8 @@ impl Parser {
             self.consume(TokenType::Dot);
             node
         } else {
-            let ch: String = self.look.borrow_mut().value.as_ref().unwrap().clone();
-            let node = Node::literal(ch);
+            let ch: u8 = self.look.borrow_mut().value.as_ref().unwrap().clone();
+            let node = Node::literal(Some(ch));
             self.consume(TokenType::Literal);
             node
         }
@@ -421,10 +443,10 @@ impl Parser {
 
     fn subseq(&self) -> Box<Node> {
         let node1 = self.star();
-        if self.look.borrow().kind == TokenType::Lparen ||
-            self.look.borrow().kind == TokenType::OpNegation ||
-            self.look.borrow().kind == TokenType::Literal ||
-            self.look.borrow().kind == TokenType::Dot
+        if self.look.borrow().kind == TokenType::Lparen
+            || self.look.borrow().kind == TokenType::OpNegation
+            || self.look.borrow().kind == TokenType::Literal
+            || self.look.borrow().kind == TokenType::Dot
         {
             //subseq -> star subseq
             let node2 = self.subseq();
@@ -437,14 +459,14 @@ impl Parser {
     }
 
     fn seq(&self) -> Box<Node> {
-        if self.look.borrow().kind == TokenType::Lparen ||
-            self.look.borrow().kind == TokenType::OpNegation ||
-            self.look.borrow().kind == TokenType::Literal ||
-            self.look.borrow().kind == TokenType::Dot
+        if self.look.borrow().kind == TokenType::Lparen
+            || self.look.borrow().kind == TokenType::OpNegation
+            || self.look.borrow().kind == TokenType::Literal
+            || self.look.borrow().kind == TokenType::Dot
         {
             self.subseq()
         } else {
-            Node::literal("".to_string())
+            Node::literal(None)
         }
 
         //match self.look.borrow().kind {
@@ -456,11 +478,11 @@ impl Parser {
     }
 
     fn group(&self) -> Box<Node> {
-        //group -> subexpr 
+        //group -> subexpr
         self.group_count.set(self.group_count.get() + 1);
         let group_id = self.group_count.get();
         let operand = self.subexpr();
-        let node =  Node::group(operand, group_id);
+        let node = Node::group(operand, group_id);
         node
     }
 
@@ -504,14 +526,5 @@ fn regex_parse_union() {
     let lexer = Lexer::new(regex);
     let parser = Parser::new(lexer);
     let syntax_tree: Tree = parser.struct_syntax_tree();
-    assert!(regex == syntax_tree.make_regex());
-}
-
-#[test]
-fn regex_parse_negation() {
-    let regex = "!(!(001.*|.*01)221)";
-    let lexer = Lexer::new(regex);
-    let parser = Parser::new(lexer);
-    let syntax_tree: Tree = parser.struct_syntax_tree();
-    assert!(regex == syntax_tree.make_regex());
+    assert!("((1|01))001" == syntax_tree.make_regex());
 }
