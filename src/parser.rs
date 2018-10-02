@@ -6,6 +6,7 @@ use std::option::Option::{None, Some};
 enum TokenType {
     OpUnion,
     OpStar,
+    OpZeroOne,
     OpNegation,
     Literal,
     Dot,
@@ -66,6 +67,10 @@ impl Lexer {
                     value: None,
                     kind: OpStar,
                 }),
+                "?" => self.token_queue.borrow_mut().push_back(Token {
+                    value: None,
+                    kind: OpZeroOne,
+                }),
                 "!" => self.token_queue.borrow_mut().push_back(Token {
                     value: None,
                     kind: OpNegation,
@@ -74,12 +79,14 @@ impl Lexer {
                     value: None,
                     kind: Dot,
                 }),
-                _ => for b in s.as_bytes() {
-                    self.token_queue.borrow_mut().push_back(Token {
-                        value: Some(*b),
-                        kind: Literal,
-                    });
-                },
+                _ => {
+                    for b in s.as_bytes() {
+                        self.token_queue.borrow_mut().push_back(Token {
+                            value: Some(*b),
+                            kind: Literal,
+                        });
+                    }
+                }
             };
             self.token_queue.borrow_mut().pop_front().unwrap()
         }
@@ -181,6 +188,7 @@ pub enum NodeType {
     OpUnion,
     OpNegation,
     OpStar,
+    OpZeroOne,
     OpConcat,
     Dot,
     Literal,
@@ -211,6 +219,15 @@ impl Node {
         Box::new(
             NodeBuilder::new()
                 .node_type(NodeType::OpStar)
+                .lhs(Some(operand))
+                .build(),
+        )
+    }
+
+    fn zeroone(operand: Box<Node>) -> Box<Node> {
+        Box::new(
+            NodeBuilder::new()
+                .node_type(NodeType::OpZeroOne)
                 .lhs(Some(operand))
                 .build(),
         )
@@ -432,17 +449,20 @@ impl Parser {
         node
     }
 
-    fn star(&self) -> Box<Node> {
+    fn quantifer(&self) -> Box<Node> {
         let mut node = self.factor();
         if self.look.borrow().kind == TokenType::OpStar {
             self.consume(TokenType::OpStar);
-            node = Node::star(node)
+            node = Node::star(node);
+        } else if self.look.borrow().kind == TokenType::OpZeroOne {
+            self.consume(TokenType::OpZeroOne);
+            node = Node::zeroone(node);
         }
         node
     }
 
     fn subseq(&self) -> Box<Node> {
-        let node1 = self.star();
+        let node1 = self.quantifer();
         if self.look.borrow().kind == TokenType::Lparen
             || self.look.borrow().kind == TokenType::OpNegation
             || self.look.borrow().kind == TokenType::Literal
